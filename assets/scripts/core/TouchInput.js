@@ -1,5 +1,5 @@
-import Mochi from 'Mochi'
-import Target from './Weapon/Target'
+import Mochi from '../Mochi'
+import Target from '../Weapon/Target'
 
 cc.Class({
   extends: cc.Component,
