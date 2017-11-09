@@ -1,167 +1,148 @@
-import {
-  messagePipeline
-} from 'MessagePipeline'
-import ESStraight from '../EnemySpawn/ESStraight'
-import ESVshaped from '../EnemySpawn/ESVshaped'
-import ESRound from '../EnemySpawn/ESRound'
-import ESMass from '../EnemySpawn/ESMass'
+import PrefabNodePool from '../core/PrefabNodePool';
+import { messagePipeline } from '../core/MessagePipeline';
+import Game from '../Game';
+
+const ENEMY_POS = [
+  new cc.Vec2(-160, -140),
+  new cc.Vec2(0, -140),
+  new cc.Vec2(160, -140),
+
+  new cc.Vec2(-80, -70),
+  new cc.Vec2(80, -70),
+
+  new cc.Vec2(-160, 0),
+  new cc.Vec2(0, 0),
+  new cc.Vec2(160, 0),
+
+  new cc.Vec2(-80, 70),
+  new cc.Vec2(80, 70),
+
+  new cc.Vec2(-160, 140),
+  new cc.Vec2(0, 140),
+  new cc.Vec2(160, 140),
+];
+
+const BG_COLORS = [
+  '#44BCFF',
+  '#4462FF',
+  '#8F44FF',
+  '#E144FF',
+  '#FF448F',
+  '#FF4444',
+  '#FF7144',
+  '#FFAD44',
+  '#FFE144',
+  '#E9FF44',
+  '#C3FF44',
+  '#78FF44',
+  '#44FF8F',
+  '#44FFE9'
+];
+
+const BOSS_TYPE = [
+  {
+    isBoss: true,
+    life: 10,
+    attack: 2,
+    spriteIndex: 1,
+    spriteW: 130,
+    spriteH: 180,
+    colliderW: 80,
+    colliderH: 150
+  },
+  {
+    isBoss: true,
+    life: 15,
+    attack: 3,
+    spriteIndex: 2,
+    spriteW: 150,
+    spriteH: 250,
+    colliderW: 120,
+    colliderH: 200
+  },
+  {
+    isBoss: true,
+    life: 20,
+    attack: 4,
+    spriteIndex: 3,
+    spriteW: 250,
+    spriteH: 350,
+    colliderW: 200,
+    colliderH: 280
+  }
+];
 
 cc.Class({
   extends: cc.Component,
 
   properties: {
-    esStraight: ESStraight,
-    esVshaped: ESVshaped,
-    esRound: ESRound,
-    esMass: ESMass,
-    mochiNode: cc.Node,
-    enemyPrefab: cc.Prefab,
-    initialPool: 50,
-    addPool: 10
+    enemyPrefab: cc.Prefab
   },
 
   // use this for initialization
   onLoad: function () {
-    messagePipeline.on('onLevelUp', this._onLevelUp, this)
-    messagePipeline.on('onReset', this._onReset, this)
-    this.mochi = this.mochiNode.getComponent('Mochi')
+    this._bossType = 0;
+    this.enemyPool = new PrefabNodePool(this.enemyPrefab, 10, 10, 'Enemy');
 
-    this.isGameStart = false
-
-    this.gameTimer = 0
-    this.enemySpawnTimer = 0
-    this.enemySpawnInterval = 2
-    this.enemySpeedBase = 100
-
-    this.testSpawnTime = 0
-
-    this._enemyPool = new cc.NodePool('Enemy');
-    this.extendEnemyPool(this.initialPool);
+    messagePipeline.on('onCreateNewRoom', this._onCreateNewRoom, this);
+    messagePipeline.on('onEnemyAttackStart', this._onEnemyAttackStart, this);
   },
 
-  _onReset() {
-    this.isGameStart = true
-
-    this.gameTimer = 0
-    this.enemySpawnTimer = 0
-    this.enemySpawnInterval = 2
-    this.enemySpeedBase = 100
-
-    this.testSpawnTime = 0
-
-    this.node.children.forEach(function (child) {
-      let enemy = child.getComponent('Enemy')
-      if (enemy) {
-        enemy.deleteEnemy()
+  _onCreateNewRoom() {
+    // let eAmount = Math.floor(Math.random() * 3 + 3);
+    // let eAmount = Math.floor(Math.random() * 2 + 3);
+    if (Game.instance.stageCount % 5 !== 0) {
+      let eAmount = 6;
+      let posIndexes = [];
+      for (let i = 0; i < eAmount; i++) {
+        let posIndex = Math.floor(Math.random() * ENEMY_POS.length);
+        while (posIndexes.indexOf(posIndex) >= 0) {
+          posIndex = Math.floor(Math.random() * ENEMY_POS.length);
+        }
+        this.spawn(posIndex);
+        posIndexes.push(posIndex);
       }
-    }, this)
-  },
-
-  extendEnemyPool(size) {
-    for (let i = 0; i < size; i++) {
-      let enemy = cc.instantiate(this.enemyPrefab);
-      enemy.on('onEnemyDelete', this.onEnemyDelete, this);
-      enemy.on('onEaten', this.onEaten, this)
-      enemy.on('onHit', this.onHit, this)
-      enemy.getComponent('Enemy').mochiNode = this.mochiNode
-      this._enemyPool.put(enemy);
+    } else {
+      this.spawnBoss();
+      this._bossType = (this._bossType + 1) % BOSS_TYPE.length;
     }
   },
 
-  onEnemyDelete(event) {
-    let enemy = event.detail;
-    this._enemyPool.put(enemy);
+  spawn(posIndex) {
+    let enemy = this.enemyPool.get({
+      isBoss: false,
+      life: 1,
+      attack: 1,
+      spriteIndex: 0,
+      spriteW: 90,
+      spriteH: 110,
+      colliderW: 80,
+      colliderH: 90
+    });
+    enemy.parent = this.node;
+    enemy.position = ENEMY_POS[posIndex];
   },
 
-  _onLevelUp(event) {
-    let level = event.getUserData()
-    this.enemySpawnInterval = Math.max(this.enemySpawnInterval - 0.05, 0.5)
-    // this.enemySpeedBase = Math.min(200, this.enemySpeedBase + 5)
+  spawnBoss() {
+    let enemy = this.enemyPool.get(BOSS_TYPE[this._bossType]);
+    enemy.parent = this.node;
+    enemy.position = new cc.Vec2(0, 0);
   },
+
+  _onEnemyAttackStart() {
+    if (this.node.children.length === 0) {
+      messagePipeline.sendMessage('onRoomEnd', this);
+      return;
+    } else {
+      this.node.children.forEach(function(element) {
+        let enemy = element.getComponent('Enemy');
+        enemy.getComponent('Enemy').attackAction();
+      }, this);
+    }
+  }
 
   // called every frame, uncomment this function to activate update callback
-  update: function (dt) {
-    if (!this.isGameStart) {
-      return
-    }
-    this.gameTimer += dt
-    this.enemySpawnTimer += dt
-    if (this.enemySpawnTimer >= this.enemySpawnInterval) {
-      this.enemySpawnTimer -= this.enemySpawnInterval
+  // update: function (dt) {
 
-      let dataList = []
-      if (this.testSpawnTime % 7 === 0) {
-        dataList = this.esRound.spawnData(12, 'ebStraight', {})
-      } else if (this.testSpawnTime % 7 === 1) {
-        dataList = this.esRound.spawnData(12, 'ebRotate', {
-          rotateSpeed: 60,
-          accelerate: 2
-        })
-      } else if (this.testSpawnTime % 7 === 2) {
-        dataList = this.esRound.spawnData(12, 'ebClockRotate', {
-          rotateSpeed: -40,
-          accelerate: 2,
-          rotateTime: 0.3,
-          straightTime: 0.3
-        })
-      } else if (this.testSpawnTime % 7 === 3) {
-        dataList = this.esVshaped.spawnData(7)
-      } else if (this.testSpawnTime % 7 === 4) {
-        dataList = this.esStraight.spawnData(15, 0)
-      } else if (this.testSpawnTime % 7 === 5) {
-        dataList = this.esStraight.spawnData(7, -8)
-      } else if (this.testSpawnTime % 7 === 6) {
-        dataList = this.esStraight.spawnData(7, 8)
-      }
-      let tmp1 = {
-        speed: 100,
-        ebType: 'ebStraight',
-        size: 32,
-        x: 350,
-        y: 350
-      }
-      let tmp2 = {
-        speed: 20,
-        ebType: 'ebRotate',
-        size: 32,
-        x: 350,
-        y: 350,
-        rotateSpeed: -60,
-        accelerate: 2
-      }
-      let tmp3 = {
-        speed: 300,
-        ebType: 'ebClockRotate',
-        size: 32,
-        x: 350,
-        y: 350,
-        rotateSpeed: 50,
-        rotateTime: 1,
-        straightTime: 0.3
-      }
-      this.spawner(dataList)
-      this.testSpawnTime += 1
-
-    }
-  },
-
-  // data: speed, x, y, size(width = height), behaviorType, etc behaviorData...
-  spawner(dataList) {
-    dataList.forEach(function (data) {
-      let enemy = null;
-      if (this._enemyPool.size() === 0) {
-        this.extendEnemyPool(this.addPool);
-      }
-      enemy = this._enemyPool.get(data);
-      enemy.parent = this.node;
-    }, this);
-  },
-
-  onEaten(event) {
-    this.mochi.eat(event.detail.node.width)
-  },
-
-  onHit(event) {
-    this.mochi.blacken()
-  }
+  // },
 });
